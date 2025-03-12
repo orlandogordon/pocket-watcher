@@ -1,3 +1,13 @@
+# Project specific
+/src/td_bank/tdbank_statements/*
+!/src/td_bank/tdbank_statements/sample.pdf
+
+/src/td_bank/transactions/*
+!/src/td_bank/transactions/transactions_sample.csv
+
+/src/td_bank/deposits/*
+!/src/td_bank/deposits/deposits_sample.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
