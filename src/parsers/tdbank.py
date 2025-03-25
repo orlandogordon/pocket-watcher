@@ -3,20 +3,6 @@ import pdfplumber
 from pathlib import Path
 from collections import namedtuple
 
-# DATES={
-#     '01/': 'Jan', 
-#     '02/': 'Feb', 
-#     '03/': 'Mar', 
-#     '04/': 'Apr', 
-#     '05/': 'May', 
-#     '06/': 'Jun', 
-#     '07/': 'Jul', 
-#     '08/': 'Aug', 
-#     '09/': 'Sep', 
-#     '10/': 'Oct', 
-#     '11/': 'Nov', 
-#     '12/': 'Dec'
-#     }
 DATES={
     'Jan': '01/',
     'Feb': '02/', 
@@ -35,6 +21,7 @@ DATES={
 Statement_Result = namedtuple('Statement_Result', ['transaction_data', 'deposit_data'])
 
 def parse_statement(pdf_file):
+    print(f"Parsing transaction and deposit data from TD Bank statement located at: '{pdf_file}'.")
     # Setting up lists for transaction and deposit data
     transactions = []
     deposits = []
@@ -48,16 +35,22 @@ def parse_statement(pdf_file):
     start_parse_deposits_keywords = ['ElectronicDeposits', 'ElectronicDeposits(continued)']
     end_parse_deposits_keywords = ['Call 1-800-937-2000', 'Subtotal:']
     ## Transaction data CSV headers
-    # transaction_data = [['Date', 'Amount', 'Category', 'Description', 'Tags']]
-    # deposit_data = [['Date', 'Description', 'Amount']]    
+    # transaction_data = [['Date', 'Amount', 'Category', 'Description', 'Tags', 'Bank Name', 'Account Holder', 'Account Number', 'Account Nickname']]
+    # deposit_data = [['Date', 'Description', 'Amount', 'Category', 'Bank Name', 'Account Holder', 'Account Number', 'Account Nickname']]    
     transaction_data = []
     deposit_data = []    
     # Setting a years array to complete dates in the data
     months = []
     years = []
+    ## Complimentary Data to be Parsed
+    bank_name = 'tdbank'
+    account_holder = ''
+    account_number = ''
+    account_nickname = ''
 
+    # Text that will hold the parsed pdf
     text = ''
-    
+
     with pdfplumber.open(str(pdf_file)) as pdf:
         for page in pdf.pages:
             text += page.extract_text()
@@ -68,6 +61,10 @@ def parse_statement(pdf_file):
             months = [month[0:3] for month in lines[i].split(" ")[-1].split('-')]
             months = [DATES[month] for month in months]
             years = [f"/{date[-4:]}" for date in lines[i].split(" ")[-1].split('-')]
+        elif " Account# " in lines[i]:
+            text_split = lines[i].split(" ")
+            account_holder=text_split[0]
+            account_number=text_split[-1][-4:]
 
     for i in range(len(lines)):
         if lines[i] in start_parse_transactions_keywords:
@@ -101,7 +98,7 @@ def parse_statement(pdf_file):
         description = transaction_split.pop()
         category = ''
         tags = ''
-        transaction_data.append([date, amount, category, description, tags])
+        transaction_data.append([date, amount, category, description, tags, bank_name, account_holder, account_number, account_nickname])
 
     # Refine deposit data and write to CSV
     for deposit in deposits:
@@ -113,7 +110,9 @@ def parse_statement(pdf_file):
             date += years[1]
         amount = deposit_split.pop()
         description = " ".join(deposit_split)
-        deposit_data.append([date, description, amount])
+        category = ''
+        transaction_match = ''
+        deposit_data.append([date, description, amount, category, bank_name, account_holder, account_number, account_nickname, transaction_match])
 
     # pdf_file.rename(f"C:\\Users\\ogord\dev\\pocket-watcher\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
 
@@ -126,12 +125,7 @@ def write_csv(transactions_csv_file_path, deposits_csv_file_path, transaction_da
     with open(transactions_csv_file_path, mode='a', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(transaction_data)
-
-    print(f"Transaction data CSV file created at: '{transactions_csv_file_path}'.")
-
     # Open the file in write mode
     with open(deposits_csv_file_path, mode='a', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(deposit_data)
-
-    print(f"Deposit data CSV file created at: '{deposits_csv_file_path}'.")
