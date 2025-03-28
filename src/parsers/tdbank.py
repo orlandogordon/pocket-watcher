@@ -21,7 +21,7 @@ DATES={
 Statement_Result = namedtuple('Statement_Result', ['transaction_data', 'deposit_data'])
 
 def parse_statement(pdf_file):
-    print(f"Parsing transaction and deposit data from TD Bank statement located at: '{pdf_file}'.")
+    print(f"Parsing transaction/deposit data from TD Bank statement: '{pdf_file}'.")
     # Setting up lists for transaction and deposit data
     transactions = []
     deposits = []
@@ -35,8 +35,6 @@ def parse_statement(pdf_file):
     start_parse_deposits_keywords = ['ElectronicDeposits', 'ElectronicDeposits(continued)']
     end_parse_deposits_keywords = ['Call 1-800-937-2000', 'Subtotal:']
     ## Transaction data CSV headers
-    # transaction_data = [['Date', 'Amount', 'Category', 'Description', 'Tags', 'Bank Name', 'Account Holder', 'Account Number', 'Account Nickname']]
-    # deposit_data = [['Date', 'Description', 'Amount', 'Category', 'Bank Name', 'Account Holder', 'Account Number', 'Account Nickname']]    
     transaction_data = []
     deposit_data = []    
     # Setting a years array to complete dates in the data
@@ -46,8 +44,6 @@ def parse_statement(pdf_file):
     bank_name = 'tdbank'
     account_holder = ''
     account_number = ''
-    account_nickname = ''
-
     # Text that will hold the parsed pdf
     text = ''
 
@@ -96,9 +92,7 @@ def parse_statement(pdf_file):
         amount = transaction_split.pop()
         transaction_split = " ".join(transaction_split).split(',')
         description = transaction_split.pop()
-        category = ''
-        tags = ''
-        transaction_data.append([date, amount, category, description, tags, bank_name, account_holder, account_number, account_nickname])
+        transaction_data.append([date, description, amount, bank_name, account_holder, account_number])
 
     # Refine deposit data and write to CSV
     for deposit in deposits:
@@ -110,14 +104,55 @@ def parse_statement(pdf_file):
             date += years[1]
         amount = deposit_split.pop()
         description = " ".join(deposit_split)
-        category = ''
-        transaction_match = ''
-        deposit_data.append([date, description, amount, category, bank_name, account_holder, account_number, account_nickname, transaction_match])
+        deposit_data.append([date, description, amount, bank_name, account_holder, account_number])
 
-    # pdf_file.rename(f"C:\\Users\\ogord\dev\\pocket-watcher\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
+    # pdf_file.rename(f"C:\\Users\\{project path}\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
 
     result = Statement_Result(transaction_data=transaction_data, deposit_data=deposit_data)
     
+    return result
+
+def parse_csv(csv_file):
+    print(f"Parsing transaction and credit data from TD Bank csv located at: '{csv_file}'.")
+    # Initialize data list to hold csv data
+    data = []
+    ## Transaction data CSV headers
+    transaction_data = []
+    deposit_data = []    
+    ## Complimentary Data to be Parsed
+    bank_name = 'tdbank'
+    account_holder = ''
+    account_number = ''
+    # Column/Index -> Field Matching
+    transaction_type_index = 3
+    date_index = 0
+    description_index = 4
+    debit_amount_index = 5
+    credit_amount_index = 6
+
+    # Read the CSV file
+    with open(csv_file, mode='r', newline='') as infile:
+        reader = csv.reader(infile)
+        data = list(reader)[1:]
+
+    for row in data:
+        if row[transaction_type_index] == 'CREDIT':
+            date_parts = row[date_index].split("-")
+            date = f"{date_parts[1]}/{date_parts[2]}/{date_parts[0]}"
+            amount = row[credit_amount_index]
+            description = row[description_index]
+            deposit_data.append([date, description, amount, bank_name, account_holder, account_number])
+        else:
+            date_parts = row[date_index].split("-")
+            date = f"{date_parts[1]}/{date_parts[2]}/{date_parts[0]}"
+            amount = row[debit_amount_index]
+            description = row[description_index]
+            transaction_data.append([date, description, amount, bank_name, account_holder, account_number])
+
+    # pdf_file.rename(f"C:\\Users\\{project path}\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
+
+    result = Statement_Result(transaction_data=transaction_data, deposit_data=deposit_data)
+
     return result
 
 def write_csv(transactions_csv_file_path, deposits_csv_file_path, transaction_data, deposit_data):

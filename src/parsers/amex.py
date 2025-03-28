@@ -18,16 +18,13 @@ def parse_statement(pdf_file):
     tracking_credits = False
     tracking_transactions = False
     ## Transaction data CSV headers
-    # transaction_data = [['Date', 'Amount', 'Category', 'Description', 'Tags', 'Bank Name', 'Account Holder', 'Account Number', 'Account Nickname']]
-    # credit_data = [['Date', 'Description', 'Amount', 'Category', 'Bank Name', 'Account Holder', 'Account Number', 'Account Nickname', 'Transaction Match']]    
     transaction_data = []
     credit_data = []    
     ## Complimentary Data to be Parsed
     bank_name = 'amex'
     account_holder = ''
     account_number = ''
-    account_nickname = ''
-    
+    # Initialize pdf text variable
     text = ''
     
     with pdfplumber.open(str(pdf_file)) as pdf:
@@ -45,9 +42,6 @@ def parse_statement(pdf_file):
                 break
     
         for i in range(len(lines)):
-            # print('screen optimized')
-            # print(account_holder, ': ', account_number)
-            # breakpoint()
             if lines[i] == "Credits Details":
                 tracking_credits = True
             if lines[i] == "New Charges Details":
@@ -77,9 +71,6 @@ def parse_statement(pdf_file):
                 account_number = lines[i].split('-')[1][0:5]
                 break
         for i in range(len(lines)):
-            # print('not screen optimized')
-            # print(account_holder, ': ', account_number)
-            # breakpoint()
             if lines[i] == "Credits Amount":
                 tracking_credits = True
             if lines[i]=="Detail - denotes Pay Over Time and/or Cash Advance activity":
@@ -87,9 +78,6 @@ def parse_statement(pdf_file):
             elif lines[i][0:3] in DATES and (tracking_transactions or tracking_credits):
                 entry_split = lines[i].split(" ")
                 entry_split[-1]= entry_split[-1].replace("-", "").replace("$", "")
-                date = entry_split[0]
-                # amount = entry_split[-1].replace("-", "").replace("$", "")
-                # description = entry_split[1:-1]
                 entry = (" ").join(entry_split) 
                 if tracking_credits: credits.append(entry)
                 if tracking_transactions: transactions.append(entry)
@@ -104,10 +92,7 @@ def parse_statement(pdf_file):
         date = transaction_split.pop(0).replace("*","")[:-2] + year
         amount = transaction_split.pop()
         description = " ".join(transaction_split)
-        # description = transaction_split.pop()
-        category = ''
-        tags = ''
-        transaction_data.append([date, amount, category, description, tags, bank_name, account_holder, account_number, account_nickname])
+        transaction_data.append([date, description, amount, bank_name, account_holder, account_number])
 
     # Refine credit data and write to CSV
     for credit in credits:
@@ -116,11 +101,48 @@ def parse_statement(pdf_file):
         date = credit_split.pop(0).replace("*","")[:-2] + year
         amount = credit_split.pop().replace("⧫", "")
         description = " ".join(credit_split)
-        category = ''
-        transaction_match = ''
-        credit_data.append([date, description, amount, category, bank_name, account_holder, account_number, account_nickname, transaction_match])
+        credit_data.append([date, description, amount, bank_name, account_holder, account_number])
 
-    # pdf_file.rename(f"C:\\Users\\ogord\dev\\pocket-watcher\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
+    # pdf_file.rename(f"C:\\Users\\{project path}\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
+
+    result = Statement_Result(transaction_data=transaction_data, credit_data=credit_data)
+
+    return result
+
+def parse_csv(csv_file):
+    print(f"Parsing transaction and credit data from AMEX csv located at: '{csv_file}'.")
+    # Initialize data list to hold csv data
+    data = []
+    ## Transaction data CSV headers
+    transaction_data = []
+    credit_data = []    
+    ## Complimentary Data to be Parsed
+    bank_name = 'amex'
+    account_holder = ''
+    account_number = ''
+    # Column/Index -> Field Matching
+    date_index = 0
+    description_index = 1
+    amount_index = 2
+
+    # Read the CSV file
+    with open(csv_file, mode='r', newline='') as infile:
+        reader = csv.reader(infile)
+        data = list(reader)[1:]
+
+    for row in data:
+        if float(row[amount_index]) < 0:
+            date = row[date_index]
+            amount = row[amount_index].replace("-", "")
+            description = row[description_index] if len(row) == 3 else row[description_index+1]
+            credit_data.append([date, description, amount, bank_name, account_holder, account_number])
+        else:
+            date = row[date_index]
+            amount = row[amount_index]
+            description = row[description_index] if len(row) == 3 else row[description_index+1]
+            transaction_data.append([date, description, amount, bank_name, account_holder, account_number])
+
+    # pdf_file.rename(f"C:\\Users\\{project path}\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
 
     result = Statement_Result(transaction_data=transaction_data, credit_data=credit_data)
 
