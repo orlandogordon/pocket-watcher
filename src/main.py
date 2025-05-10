@@ -12,12 +12,18 @@ def main():
     deposits_path = root_dir.joinpath(f"output/deposits.csv")
     credits_path = root_dir.joinpath(f"output/credit-card-credits.csv")
     brokerage_transactions_path = root_dir.joinpath(f"output/brokerage_transactions.csv")
+    retirement_balance_path = root_dir.joinpath(f"output/retirement_balance.csv")
+    retirement_transactions_path = root_dir.joinpath(f"output/retirement_transactions.csv")
 
     # Open the file in write mode
     with open(transactions_path, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerows([['Date', 'Description', 'Amount', 'Bank Name', 'Account Holder', 'Account Number']])  # Consider adding 'Category', 'Tags', 'Account Nickname', 'Transaction Match' at the DB level    
+        writer.writerows([['Date', 'Description', 'Category', 'Amount', 'Bank Name', 'Account Holder', 'Account Number']])  # Consider adding 'Category', 'Tags', 'Account Nickname', 'Transaction Match' at the DB level    
         print(f"Transaction data CSV file created at: '{transactions_path}'.")
+    # with open(transactions_path_legacy, mode='w', newline='') as file:
+    #     writer = csv.writer(file)
+    #     writer.writerows([['Date', 'Description', 'Amount', 'Bank Name', 'Account Holder', 'Account Number']])  # Consider adding 'Category', 'Tags', 'Account Nickname', 'Transaction Match' at the DB level    
+    #     print(f"Transaction data CSV file created at: '{transactions_path}'.")
     with open(deposits_path, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerows([['Date', 'Description', 'Amount', 'Bank Name', 'Account Holder', 'Account Number']])  # Consider adding 'Category', 'Tags', 'Account Nickname', 'Transaction Match' at the DB level
@@ -30,6 +36,14 @@ def main():
     #     writer = csv.writer(file)
     #     writer.writerows([['Date', 'Transaction Type', 'Symbol', 'Description', 'Quantity', 'Price', 'Amount', 'Brokerage Name', 'Account Number']])  # Consider adding 'Category', 'Tags', 'Account Nickname', 'Transaction Match' at the DB level
     #     print(f"Brokerage Transaction data CSV file created at: '{brokerage_transactions_path}'.")
+    with open(retirement_balance_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows([['Date', 'Period', 'Balance', 'Rate of Return', 'Account Type', 'Account Holder', 'Brokerage Name']])  # Consider adding 'Category', 'Tags', 'Account Nickname', 'Transaction Match' at the DB level
+        print(f"Retirement Account Balance data CSV file created at: '{retirement_balance_path}'.")
+    with open(retirement_transactions_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows([['Date', 'Amount', 'Description', 'Category', 'Vest Date', 'Account Type', 'Account Holder', 'Brokerage Name']])  # Consider adding 'Category', 'Tags', 'Account Nickname', 'Transaction Match' at the DB level
+        print(f"Retirement Account Transactions data CSV file created at: '{retirement_transactions_path}'.")
     
     print('*'*100)
     print("Beginning Transaction CSV Parsing Process")
@@ -43,25 +57,25 @@ def main():
     #     parsed_data = amex.parse_csv(csv_file)
     #     amex.write_csv(transactions_path, credits_path, parsed_data.transaction_data, parsed_data.credit_data)
 
-    for csv_file in transaction_csv_path.glob('./amzn-synchrony/*.csv'):
-        parsed_data = amzn_syf.parse_csv(csv_file)
-        amzn_syf.write_csv(transactions_path, credits_path, parsed_data.transaction_data, parsed_data.credit_data)
+    # for csv_file in transaction_csv_path.glob('./amzn-synchrony/*.csv'):
+    #     parsed_data = amzn_syf.parse_csv(csv_file)
+    #     amzn_syf.write_csv(transactions_path, credits_path, parsed_data.transaction_data, parsed_data.credit_data)
 
     print('*'*100)
     print("Beginning Bank Statement Parsing Process")
     print('*'*100)
 
-    # for pdf_file in statements_path.glob('./tdbank/*.pdf'):
-    #     parsed_data = tdbank.parse_statement(pdf_file)
-    #     tdbank.write_csv(transactions_path, deposits_path, parsed_data.transaction_data, parsed_data.deposit_data)
+    for pdf_file in statements_path.glob('./tdbank/*.pdf'):
+        parsed_data = tdbank.parse_statement(pdf_file)
+        tdbank.write_csv(transactions_path, parsed_data)
+        breakpoint()
+    for pdf_file in statements_path.glob('./amex/*.pdf'):
+        parsed_data = amex.parse_statement(pdf_file)
+        amex.write_csv(transactions_path, credits_path, parsed_data.transaction_data, parsed_data.credit_data)
 
-    # for pdf_file in statements_path.glob('./amex/*.pdf'):
-    #     parsed_data = amex.parse_statement(pdf_file)
-    #     amex.write_csv(transactions_path, credits_path, parsed_data.transaction_data, parsed_data.credit_data)
-
-    # for pdf_file in statements_path.glob('./amzn-synchrony/*.pdf'):
-    #     parsed_data = amzn_syf.parse_statement(pdf_file)
-    #     amex.write_csv(transactions_path, credits_path, parsed_data.transaction_data, parsed_data.credit_data)
+    for pdf_file in statements_path.glob('./amzn-synchrony/*.pdf'):
+        parsed_data = amzn_syf.parse_statement(pdf_file)
+        amex.write_csv(transactions_path, credits_path, parsed_data.transaction_data, parsed_data.credit_data)
 
     print('*'*100)
     print("Beginning Brokerage Statement Parsing Process")
