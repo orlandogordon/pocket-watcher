@@ -5,8 +5,6 @@ from PIL import Image
 import pdfplumber
 from pdfplumber.table import Table, Row, Column
 from pathlib import Path
-from collections import namedtuple
-import traceback
 import pandas as pd
 
 import pdfplumber.structure
@@ -26,35 +24,29 @@ DATES={
     'Dec': '12/'
     }
 
-Statement_Result = namedtuple('Statement_Result', ['transaction_data', 'deposit_data'])
-
 def parse_statement(pdf_file):
-    print(f"Parsing transaction/deposit data from TD Bank statement: '{pdf_file}'.")
+    print(f"Parsing transaction data from TD Bank statement: '{pdf_file}'.")
     # Used to manage application state. When the header of the deposits table in the PDF is discovered, 'tracking_depositis' will flip to true
     # and the following lines analyzed will be added to the deposits list if they fit the expected format of a transaction entry
     tracking_deposits = False
-    tracking_transactions = False
+    tracking_purchases = False
     # Parsing logic configuration variables specific to each type of bank statement 
-    start_parse_transactions_keywords = ['ElectronicPayments', 'ElectronicPayments(continued)']
-    end_parse_transactions_keywords = ['Call 1-800-937-2000', 'Subtotal:']
-    start_parse_deposits_keywords = ['ElectronicDeposits', 'ElectronicDeposits(continued)']
+    start_parse_purchases_keywords = ['Payments', 'ElectronicPayments', 'ElectronicPayments(continued)', 'OtherWithdrawals']
+    end_parse_purchases_keywords = ['Call 1-800-937-2000', 'Subtotal:']
+    start_parse_deposits_keywords = ['Deposits', 'ElectronicDeposits', 'ElectronicDeposits(continued)', 'OtherCredits']
     end_parse_deposits_keywords = ['Call 1-800-937-2000', 'Subtotal:']  
     # Setting a years array to complete dates in the data
     months = []
     years = []
-    ## Complimentary Data to be Parsed
+    # Complimentary Data to be Parsed
     bank_name = 'tdbank'
     account_holder = ''
     account_number = ''
-    # Text that will hold the parsed pdf
-    text = ''
-    ## Testing Table Parsing
+    # Lines that will be used to create each table and the parsed data from the tables
     horizontal_lines = []
     vertical_lines = []
-    data = []
-    transaction_data = []
-
-    
+    deposit_data = []
+    purchase_data = []
 
     with pdfplumber.open(str(pdf_file)) as pdf:
         pdf_shortcut = str(pdf_file).replace('.pdf', '')
@@ -64,7 +56,8 @@ def parse_statement(pdf_file):
         pdf_extract_dict = {page : pdf.pages[page] for page in range(len(pdf.pages))} 
         horizontal_lines = []
         vertical_lines = []
-        tables = []
+        deposit_tables = []
+        purchase_tables = []
 
         for page in lines_dict:
             for line in lines_dict[page][0]:
@@ -79,7 +72,11 @@ def parse_statement(pdf_file):
 
         for page in lines_dict:
             for line in lines_dict[page][0]:
-                if line['text'] == 'POSTINGDATE DESCRIPTION AMOUNT':
+                if line['text'] in start_parse_deposits_keywords:
+                    tracking_deposits = True
+                elif line['text'] in start_parse_purchases_keywords:
+                    tracking_purchases = True
+                elif line['text'] == 'POSTINGDATE DESCRIPTION AMOUNT' and (tracking_deposits or tracking_purchases):
                     vertical_lines.append(line['x0'])
                     trailing_word = ''
                     for char in line['chars']:
@@ -91,35 +88,42 @@ def parse_statement(pdf_file):
                             trailing_word = ''
                         trailing_word += char['text']
                     vertical_lines.append(line['x1'])
-                    tracking_transactions = True
-                if tracking_transactions and re.match(r'^\d{2}/\d{2}.*\d.\d{2}$', str(line['text'])):
+                if (tracking_deposits or tracking_purchases) and re.match(r'^\d{2}/\d{2}.*\d.\d{2}$', str(line['text'])):
                     horizontal_lines.append(line['top'])
-                if tracking_transactions and any(line['text'].startswith(prefix) for prefix in [*end_parse_transactions_keywords, *end_parse_deposits_keywords]):
+                if (tracking_deposits or tracking_purchases) and any(line['text'].startswith(prefix) for prefix in [*end_parse_purchases_keywords, *end_parse_deposits_keywords]):
                     horizontal_lines.append(line['top'])
-
                     cells = []
+                    
                     for i in range(len(horizontal_lines) - 1):
                         for j in range(len(vertical_lines)-1):
                             cells.append([vertical_lines[j],  horizontal_lines[i], vertical_lines[j+1],  horizontal_lines[i+1]])
-
-                    tables.append(Table(pdf.pages[page], tuple(cells)))
+                    
+                    if tracking_deposits:
+                        deposit_tables.append(Table(pdf.pages[page], tuple(cells)))
+                    elif tracking_purchases:
+                        purchase_tables.append(Table(pdf.pages[page], tuple(cells)))
 
                     #  Reset tracking variables
                     vertical_lines = []
                     horizontal_lines = []
-                    tracking_transactions = False
+                    tracking_deposits = False
+                    tracking_purchases = False
         
         # Create debugging images and concatenate them
         images = []
         prefix = f'finetune_tables_for_{os.path.basename(pdf_shortcut)}'
         for page in pdf.pages:
             im = page.to_image(resolution=120)
-            for table in tables:
+            for table in deposit_tables:
+                if page == table.page:
+                    for cell in table.cells:
+                        im.draw_rect(cell, stroke='red') 
+            for table in purchase_tables:
                 if page == table.page:
                     for cell in table.cells:
                         im.draw_rect(cell, stroke='red')
-            if any(page == table.page for table in tables):
-                im.save(f"png/{prefix}_page-{page.page_number}.png")
+
+            im.save(f"png/{prefix}_page-{page.page_number}.png")
 
         for file_name in os.listdir('png'):
             if file_name.startswith(prefix) and file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
@@ -136,25 +140,48 @@ def parse_statement(pdf_file):
         for im in images:
             new_image.paste(im, (0,y_offset))
             y_offset += im.size[1]
+            im.close()
+            os.remove(os.path.join(im.filename))
 
-        new_image.save("png/concatenated_vertical.png")
+        new_image.save(f'png/{os.path.basename(pdf_shortcut)}.png')
 
-    for table in tables:
-        data.extend(table.extract())
+    for table in deposit_tables:
+        deposit_data.extend(table.extract())
+
+    for table in purchase_tables:
+        purchase_data.extend(table.extract())
 
     # Refine transaction data and write to CSV
-    for transaction in data:
-        if transaction[0][0:2] == months[0]:
-            transaction[0] += years[0]
-        else:
-            transaction[0] += years[1]
-        transaction.extend([bank_name, account_holder, account_number])
-    for x in data: 
-        print(f'Length: {len(x)}, data: {x}')
+    for i in range(len(deposit_data)):
+        date = deposit_data[i][0]
+        description = deposit_data[i][1]
+        amount = deposit_data[i][2]
 
+        if date[0:3] == months[0]:
+            date += years[0]
+        elif date[0:3] == months[1]:
+            date += years[1]
+        else:
+            print(f"ERROR: Date format error: {date}")
+        
+        deposit_data[i] = [date, description, '', amount, 'Deposit', bank_name, account_holder, account_number]
+
+    for i in range(len(purchase_data)):
+        date = purchase_data[i][0]
+        description = purchase_data[i][1]
+        amount = purchase_data[i][2]
+
+        if date[0:3] == months[0]:
+            date += years[0]
+        elif date[0:3] == months[1]:
+            date += years[1]
+        else: 
+            print(f"ERROR: Date format error: {date}")
+        
+        purchase_data[i] = [date, description, '', amount, 'Purchase', bank_name, account_holder, account_number]
+        
     # pdf_file.rename(f"C:\\Users\\{project path}\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
-    breakpoint()
-    return data
+    return deposit_data + purchase_data
 
 def parse_statement_legacy(pdf_file):
     print(f"Parsing transaction/deposit data from TD Bank statement: '{pdf_file}'.")
@@ -250,18 +277,15 @@ def parse_statement_legacy(pdf_file):
         deposit_data.append([date, description, amount, bank_name, account_holder, account_number])
 
     # pdf_file.rename(f"C:\\Users\\{project path}\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
-
-    result = Statement_Result(transaction_data=transaction_data, deposit_data=deposit_data)
     
-    return result
+    return transaction_data + deposit_data
 
 def parse_csv(csv_file):
-    print(f"Parsing transaction and credit data from TD Bank csv located at: '{csv_file}'.")
+    print(f"Parsing transaction data from TD Bank csv located at: '{csv_file}'.")
     # Initialize data list to hold csv data
     data = []
     ## Transaction data CSV headers
     transaction_data = []
-    deposit_data = []    
     ## Complimentary Data to be Parsed
     bank_name = 'tdbank'
     account_holder = ''
@@ -272,6 +296,7 @@ def parse_csv(csv_file):
     description_index = 4
     debit_amount_index = 5
     credit_amount_index = 6
+    account_number_index = 2
 
     # Read the CSV file
     with open(csv_file, mode='r', newline='') as infile:
@@ -284,32 +309,26 @@ def parse_csv(csv_file):
             date = f"{date_parts[1]}/{date_parts[2]}/{date_parts[0]}"
             amount = row[credit_amount_index]
             description = row[description_index]
-            deposit_data.append([date, description, amount, bank_name, account_holder, account_number])
+            category = ''
+            transaction_type = 'Deposit'
+            account_number = row[account_number_index][-4:]
+            transaction_data.append([date, description, category, amount, transaction_type, bank_name, account_holder, account_number])
         else:
             date_parts = row[date_index].split("-")
             date = f"{date_parts[1]}/{date_parts[2]}/{date_parts[0]}"
             amount = row[debit_amount_index]
             description = row[description_index]
-            transaction_data.append([date, description, amount, bank_name, account_holder, account_number])
+            category = ''
+            transaction_type = 'Purchase'
+            account_number = row[account_number_index][-4:]
+            transaction_data.append([date, description, category, amount, transaction_type, bank_name, account_holder, account_number])
 
     # pdf_file.rename(f"C:\\Users\\{project path}\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
 
-    result = Statement_Result(transaction_data=transaction_data, deposit_data=deposit_data)
-
-    return result
+    return transaction_data
 
 def write_csv(transactions_csv_file_path, transaction_data):
     # Open the file in write mode
     with open(transactions_csv_file_path, mode='a', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(transaction_data)
-
-def write_csv_legacy(transactions_csv_file_path, deposits_csv_file_path, transaction_data, deposit_data):
-    # Open the file in write mode
-    with open(transactions_csv_file_path, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerows(transaction_data)
-    # Open the file in write mode
-    with open(deposits_csv_file_path, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerows(deposit_data)

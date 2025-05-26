@@ -47,6 +47,8 @@ def parse_401k_statement(pdf_file):
     lines = text.split('\n')
     
     print(pdf_file)
+    for line in lines: print(line)
+    breakpoint()
     for i in range(len(lines)):
         if "AccountNumber" in lines[i] or "StatementPeriod" in lines[i]:
             while "-" not in lines[i]: 

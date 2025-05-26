@@ -1,7 +1,6 @@
 import csv
 import pdfplumber
 from pathlib import Path
-from collections import namedtuple
 
 DATES={
     'Jan': '01/',
@@ -17,8 +16,6 @@ DATES={
     'Nov': '11/', 
     'Dec': '12/'
     }
-
-Statement_Result = namedtuple('Statement_Result', ['transaction_data'])
 
 def parse_csv(csv_file):
     print(f"Parsing transaction data from Ameriprise CSV located at: '{csv_file}'.")
@@ -59,9 +56,7 @@ def parse_csv(csv_file):
 
     # pdf_file.rename(f"C:\\Users\\{project path}\\processed_statements\\{pdf_file.parts[-2]}\\{pdf_file.parts[-1]}")
 
-    result = Statement_Result(transaction_data=transaction_data)
-
-    return result
+    return transaction_data
 
 def write_csv(transactions_csv_file_path, transaction_data):
     # Open the file in write mode
